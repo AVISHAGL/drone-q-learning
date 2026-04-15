@@ -101,9 +101,20 @@ class StatusBar(ttk.Frame):
         elif self._state == _TRAINING:
             self._sdk.pause()
             self._set_state(_PAUSED)
+            self._show_greedy()
         else:
             self._sdk.resume()
             self._set_state(_TRAINING)
+
+    def _show_greedy(self) -> None:
+        """Run one greedy episode and display the optimal path on the canvas."""
+        path, _ = self._sdk.evaluate()
+        if path:
+            self._canvas.refresh(
+                policy=self._sdk.get_policy(),
+                drone_state=path[-1],
+                trail=path,
+            )
 
     _DEFAULT_DELAY_MS = 100  # fallback when saved delay was 0
 

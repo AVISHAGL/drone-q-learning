@@ -99,8 +99,8 @@ class TrainingLoop:
                 self._agent.update(state, action, reward, next_state)
                 state = next_state
                 trail.append(state)
+                self._queue.put(StepUpdate(state=state, trail=trail.copy()))
                 if self.vis_delay > 0:
-                    self._queue.put(StepUpdate(state=state, trail=trail.copy()))
                     time.sleep(self.vis_delay)
                 if done:
                     reached = True

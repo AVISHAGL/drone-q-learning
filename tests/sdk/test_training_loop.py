@@ -46,6 +46,18 @@ def _get_loop_queue(lp: TrainingLoop) -> queue.Queue:
     return lp._queue
 
 
+def _next_episode_stats(q: queue.Queue, timeout: float = 5.0) -> EpisodeStats:
+    """Drain StepUpdates and return the next EpisodeStats."""
+    deadline = __import__("time").monotonic() + timeout
+    while True:
+        remaining = deadline - __import__("time").monotonic()
+        if remaining <= 0:
+            raise queue.Empty
+        item = q.get(timeout=remaining)
+        if isinstance(item, EpisodeStats):
+            return item
+
+
 def test_training_loop_init_no_error(small_cfg: dict) -> None:
     """TrainingLoop constructs without error."""
     env = GridWorld(small_cfg["env"])
@@ -94,10 +106,10 @@ def test_training_loop_queue_receives_stats_within_timeout(
 def test_training_loop_stats_is_episode_stats_instance(
     loop: TrainingLoop,
 ) -> None:
-    """Item from queue is EpisodeStats."""
+    """EpisodeStats is eventually posted to the queue (after StepUpdates)."""
     loop.start()
     q = _get_loop_queue(loop)
-    item = q.get(timeout=5.0)
+    item = _next_episode_stats(q)
     assert isinstance(item, EpisodeStats)
     loop.stop()
 
@@ -115,11 +127,11 @@ def test_training_loop_stop_before_start_no_error(loop: TrainingLoop) -> None:
 
 
 def test_training_loop_episode_counter_increases(loop: TrainingLoop) -> None:
-    """Second stat has higher episode number than first."""
+    """Second EpisodeStats has higher episode number than first."""
     loop.start()
     q = _get_loop_queue(loop)
-    s1 = q.get(timeout=5.0)
-    s2 = q.get(timeout=5.0)
+    s1 = _next_episode_stats(q)
+    s2 = _next_episode_stats(q)
     assert s2.episode > s1.episode
     loop.stop()
 
