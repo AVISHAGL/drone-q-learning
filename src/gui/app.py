@@ -134,32 +134,29 @@ class App(tk.Tk):
     def _poll_queue(self) -> None:
         q = self._sdk.get_stats_queue()
         last_step = None
+        needs_policy_refresh = False
         try:
             while True:
                 item = q.get_nowait()
                 if hasattr(item, "episode"):
-                    # Flush latest step position before episode-level refresh
-                    if last_step is not None:
-                        self._canvas.refresh(
-                            policy=self._sdk.get_policy(),
-                            drone_state=last_step.state,
-                        )
-                        last_step = None
                     self._dash.update(item)
                     self._dash.set_epsilon(self._sdk._agent._epsilon)
                     self._graph.append(item)
                     if item.episode % self._vis_n == 0:
-                        self._canvas.refresh(policy=self._sdk.get_policy())
+                        needs_policy_refresh = True
+                    last_step = None  # episode ended; discard in-progress step
                 else:
-                    last_step = item  # keep only latest; renders after drain
+                    last_step = item  # keep only the latest step per drain
         except queue.Empty:
             pass
-        # Render the most recent step position (no trail during training)
+        # One canvas refresh per poll cycle — prevents freeze in fast mode
         if last_step is not None:
             self._canvas.refresh(
                 policy=self._sdk.get_policy(),
                 drone_state=last_step.state,
             )
+        elif needs_policy_refresh:
+            self._canvas.refresh(policy=self._sdk.get_policy())
         self.after(50, self._poll_queue)
 
     # ------------------------------------------------------------------
