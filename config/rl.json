@@ -1,0 +1,12 @@
+{
+    "version": "1.00",
+    "alpha": 0.1,
+    "gamma": 0.9,
+    "epsilon": 1.0,
+    "epsilon_decay": 0.995,
+    "epsilon_min": 0.01,
+    "episodes": 1000,
+    "max_steps": 200,
+    "vis_every_n": 10,
+    "vis_delay_ms": 0
+}
