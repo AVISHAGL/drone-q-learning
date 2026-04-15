@@ -10,6 +10,7 @@ from src.gui.control_panel import ControlPanel
 from src.gui.dashboard import Dashboard
 from src.gui.graph_panel import GraphPanel
 from src.gui.grid_canvas import GridCanvas
+from src.gui.status_bar import StatusBar
 from src.sdk.drone_sim_sdk import DroneSimSDK
 
 __all__ = ["App"]
@@ -66,17 +67,21 @@ class App(tk.Tk):
         # Left column: wraps tightly around canvas + graph; does NOT expand
         # horizontally so the graph always aligns with the grid width exactly.
         left = ttk.Frame(self)
-        left.pack(side="left", fill="y")
 
         # Right column: fills all remaining horizontal space.
         right = ttk.Frame(self)
-        right.pack(side="left", fill="both", expand=True)
 
-        # Canvas: initial size is a placeholder; _sync_canvas_size replaces it
-        # with the correct square immediately once the window is realised.
-        # No fill/expand — the left frame must wrap it tightly.
+        # Canvas created before StatusBar so it can be passed in directly.
         self._canvas = GridCanvas(left, self._sdk, width=700, height=700,
                                   bg=theme.BG, highlightthickness=0)
+
+        # Status bar packed first (bottom) so it spans the full window width.
+        self._bar = StatusBar(self, self._sdk, self._canvas)
+        self._bar.pack(side="bottom", fill="x")
+
+        left.pack(side="left", fill="y")
+        right.pack(side="left", fill="both", expand=True)
+
         self._canvas.pack()
         self._canvas.refresh(policy=self._sdk.get_policy())
 
@@ -89,8 +94,6 @@ class App(tk.Tk):
             right,
             self._sdk,
             canvas=self._canvas,
-            on_greedy_cb=self._on_greedy,
-            on_grid_reset_cb=self._on_grid_reset,
         )
         self._ctrl.pack(fill="x")
 
@@ -111,8 +114,9 @@ class App(tk.Tk):
         if self._syncing:
             return
         graph_h = self._graph.winfo_reqheight() or _GRAPH_H
+        bar_h = self._bar.winfo_reqheight()
         avail_w = max(300, event.width  - _RIGHT_W)
-        avail_h = max(300, event.height - graph_h)
+        avail_h = max(300, event.height - graph_h - bar_h)
         size = min(avail_w, avail_h)
         if size == self._last_size:
             return
