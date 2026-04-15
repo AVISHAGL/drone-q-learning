@@ -76,7 +76,7 @@ pip install -e ".[dev]"
 source .venv/bin/activate
 
 # Launch the GUI
-python -m src.main
+uv run python -m src.main
 ```
 
 ### GUI Controls
