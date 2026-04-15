@@ -93,32 +93,31 @@ Classic path-finding algorithms (BFS, Dijkstra, A*) require full knowledge of th
 
 | Cell Type | Display Color | Description |
 |---|---|---|
-| Empty | White | Passable, normal step cost |
+| Empty | Dark (heatmap-shaded) | Passable, normal step cost; shaded by V(s) during training |
 | Building | Gray | Impassable; drone cannot enter |
-| Trap | Red | Passable, high negative reward |
+| Trap | Red | **Terminal**; high negative reward; episode ends immediately on entry |
 | Wind Zone | Blue | Passable, moderate negative reward |
 | Target | Green | Terminal success state |
-| Start | Yellow (outline) | Drone spawn position |
+| Start | Yellow | Drone spawn position |
 
-**FR-ENV-03** The environment shall expose a standard RL interface: `reset() → state`, `step(action) → (next_state, reward, done)`.
+**FR-ENV-03** The environment shall expose a standard RL interface: `reset() → state`, `step(state, action) → (next_state, reward, done)`.
 
 **FR-ENV-04** Episode termination conditions:
 - Drone reaches the Target cell (success, `done=True`).
-- Drone exceeds the maximum steps per episode (failure, `done=True`). Default: configurable in `config/env.json`.
+- Drone enters a Trap cell (failure, `done=True`).
+- Drone exceeds the maximum steps per episode (failure, `done=True`). Default configurable in `config/env.json`.
 
 **FR-ENV-05** State representation: a single integer index encoding the `(row, col)` position — `state = row * num_cols + col`.
 
 **FR-ENV-06** Action space: four discrete actions — `UP=0`, `DOWN=1`, `LEFT=2`, `RIGHT=3`.
 
-**FR-ENV-07** Boundary behaviour: attempting to move outside the grid or into a Building cell leaves the drone in its current position and applies the normal step penalty.
+**FR-ENV-07** Boundary behaviour: attempting to move outside the grid or into a Building cell leaves the drone in its current position and applies the building step penalty.
 
 ### 5.2 Reinforcement Learning Engine
 
 **FR-RL-01** Implement the **Q-Learning** (off-policy TD) update rule:
 
-```
-Q(s, a) ← Q(s, a) + α · [r + γ · max_{a'} Q(s', a') − Q(s, a)]
-```
+$$Q(s,a) \leftarrow Q(s,a) + \alpha \left[ r + \gamma \max_{a'} Q(s', a') - Q(s,a) \right]$$
 
 **FR-RL-02** Hyperparameters (all configurable via `config/rl.json`, no hardcoded defaults in source):
 
@@ -131,6 +130,7 @@ Q(s, a) ← Q(s, a) + α · [r + γ · max_{a'} Q(s', a') − Q(s, a)]
 | Epsilon minimum | — | Floor for ε after decay |
 | Episodes | N | Total training episodes |
 | Max steps/episode | T | Cap on steps before episode is truncated |
+| Visual delay | — | Per-step animation delay in ms (0 = fast mode) |
 
 **FR-RL-03** Action selection: **ε-Greedy** — with probability ε choose a uniformly random action; otherwise choose `argmax_a Q(s, a)`.
 
@@ -140,40 +140,45 @@ Q(s, a) ← Q(s, a) + α · [r + γ · max_{a'} Q(s', a') − Q(s, a)]
 
 **FR-RL-06** The engine shall support **pause / resume** without resetting the Q-Table.
 
-**FR-RL-07** Save Q-Table: export the current Q-Table to a JSON or NumPy `.npy` file selected by the user.
+**FR-RL-07** Save Q-Table: export the current Q-Table to a NumPy `.npy` file selected by the user via file dialog.
 
-**FR-RL-08** Load Q-Table: import a previously saved Q-Table and resume training or run an evaluation episode.
+**FR-RL-08** Load Q-Table: import a previously saved `.npy` Q-Table and resume training or run an evaluation episode.
 
-**FR-RL-09** Run a **greedy evaluation episode** (ε = 0) at any time to demonstrate the current policy without modifying the Q-Table.
+**FR-RL-09** Run a **greedy evaluation episode** (ε = 0) automatically when training is paused, visualising the optimal path without modifying the Q-Table.
+
+**FR-RL-10** Track visited states: the engine shall record which states the agent has taken an action from, resetting on hard reset.
 
 ### 5.3 GUI — Grid Visualization
 
 **FR-GUI-GRID-01** Render the grid as a colour-coded tile map matching the cell-type colour scheme in §5.1.
 
-**FR-GUI-GRID-02** Overlay the learned policy as **directional arrows** on each non-terminal, non-building cell. Each arrow indicates `argmax_a Q(s, a)`.
+**FR-GUI-GRID-02** Overlay the learned policy as **directional arrows** only on states the agent has visited (non-terminal, non-building cells). Each arrow indicates `argmax_a Q(s, a)`.
 
-**FR-GUI-GRID-03** Highlight the **current drone position** distinctly (e.g., drone icon or contrasting border) during a live episode.
+**FR-GUI-GRID-03** Highlight the **current drone position** distinctly during a live training episode.
 
-**FR-GUI-GRID-04** The grid shall update in real time as episodes progress. Update frequency is configurable (e.g., refresh every N episodes).
+**FR-GUI-GRID-04** The grid shall update in real time as episodes progress. Update frequency is configurable via `vis_every_n` in `config/rl.json`.
 
-**FR-GUI-GRID-05** The user shall be able to **edit the grid** before training:
-- Click a cell to cycle through or select cell types.
+**FR-GUI-GRID-05** The user shall be able to **edit the grid** before or during training:
+- Click a cell to select its type from the palette.
 - Drag to paint multiple cells of the same type.
-- There must be exactly one Start cell and one Target cell at all times; the UI must enforce this constraint.
+- There must be exactly one Start cell and one Target cell; the UI enforces this constraint and reverts illegal edits.
+- A walkable path from Start to Target must exist; edits that would block all paths are reverted with a warning.
 
-**FR-GUI-GRID-06** Provide a **reset grid** button that restores the grid to the default layout loaded from `config/env.json`.
+**FR-GUI-GRID-06** A **reset grid** button (or equivalent) shall restore the grid to the default layout loaded from `config/env.json`.
+
+**FR-GUI-GRID-07** **Value heatmap**: EMPTY cells shall be shaded by their normalised state-value $V(s) = \max_a Q(s,a)$, transitioning from dark-burgundy (low) through neutral to deep-purple (high). The heatmap is toggled via the `[H]` hotkey.
 
 ### 5.4 GUI — Drone Visualization
 
-**FR-GUI-DRONE-01** Display the drone as a distinct icon (image asset or Unicode character) at its current grid position.
+**FR-GUI-DRONE-01** Display the drone as a distinct icon at its current grid position during live training.
 
-**FR-GUI-DRONE-02** During a live training episode (visualised at reduced speed) the drone shall animate step-by-step.
+**FR-GUI-DRONE-02** During training (step-by-step mode) the drone shall animate one cell at a time, with per-step delay controlled by the speed slider.
 
-**FR-GUI-DRONE-03** The path taken in the most recently completed episode shall be highlighted (e.g., trail of semi-transparent markers) until the next episode begins.
+**FR-GUI-DRONE-03** When training is paused, a greedy evaluation episode runs automatically and its path is shown as a trail of markers from Start to the final cell; the drone icon is placed at the last reached position.
 
 ### 5.5 GUI — Dashboard Panel
 
-The dashboard shall be a side panel (or bottom bar) displaying the following live statistics:
+The dashboard shall be a side panel displaying the following live statistics:
 
 **FR-GUI-DASH-01** Current episode number.
 
@@ -193,33 +198,36 @@ The dashboard shall be a side panel (or bottom bar) displaying the following liv
 
 **FR-GUI-GRAPH-01** Display a live line graph with **episode number on the X-axis** and **total reward per episode on the Y-axis**.
 
-**FR-GUI-GRAPH-02** Optionally display a second line showing **max Δ Q-value per episode** (convergence indicator).
+**FR-GUI-GRAPH-02** Optionally display a second line showing **max Δ Q-value per episode** (convergence indicator), toggled by a checkbox.
 
-**FR-GUI-GRAPH-03** The graph shall update at the end of each episode (or every N episodes for performance).
+**FR-GUI-GRAPH-03** The graph shall update every N episodes (configurable via `vis_every_n`).
 
-**FR-GUI-GRAPH-04** The graph shall be scrollable / zoomable if the number of episodes is large.
-
-**FR-GUI-GRAPH-05** Provide an option to export the graph as a PNG image.
+**FR-GUI-GRAPH-04** Provide an **Export PNG** button to save the graph as an image file.
 
 ### 5.7 GUI — Controls
 
-**FR-GUI-CTRL-01** **Start Training** button — begins or resumes the Q-Learning training loop.
+All training controls are accessible via keyboard hotkeys displayed in a persistent **bottom status bar**. The status bar shows the current training mode (`Idle`, `Training`, `Paused`) at all times.
 
-**FR-GUI-CTRL-02** **Pause / Resume** button — suspends training after the current episode completes without losing Q-Table state.
+| Hotkey | Action |
+|---|---|
+| `[SPACE]` | Start training (Idle → Training); Pause (Training → Paused); Resume (Paused → Training) |
+| `[F]` | Toggle fast mode — sets visual delay to 0; restoring restores prior delay |
+| `[H]` | Toggle value heatmap on/off |
+| `[A]` | Toggle policy arrows on/off |
+| `[E]` | Toggle grid edit mode on/off |
+| `[S]` | Open file dialog and save Q-Table to `.npy` |
+| `[L]` | Open file dialog and load Q-Table from `.npy` |
+| `[R]` | Hard reset — clears Q-Table, resets episode counter and epsilon |
 
-**FR-GUI-CTRL-03** **Stop Training** button — ends training; Q-Table is preserved.
+Hotkeys are suppressed when a text Entry field has keyboard focus (hyperparameter editing).
 
-**FR-GUI-CTRL-04** **Reset Training** button — clears the Q-Table and all statistics; resets episode counter to zero.
+**FR-GUI-CTRL-01** The status bar shall display the current training state at all times.
 
-**FR-GUI-CTRL-05** **Run Greedy Episode** button — runs one evaluation episode (ε = 0) and visualises the drone path.
+**FR-GUI-CTRL-02** The **Config tab** shall provide editable fields for α, γ, ε, epsilon decay, N episodes, and max steps. An **Apply** button commits changes to the running agent.
 
-**FR-GUI-CTRL-06** **Save Q-Table** button — opens a file-save dialog and serialises the Q-Table.
+**FR-GUI-CTRL-03** **Speed slider** — controls the visualisation delay between steps (range: 0 → 500 ms/step). Configurable default in `config/rl.json`.
 
-**FR-GUI-CTRL-07** **Load Q-Table** button — opens a file-open dialog and deserialises a Q-Table.
-
-**FR-GUI-CTRL-08** **Hyperparameter panel** — editable fields for α, γ, ε, epsilon decay, N episodes, and max steps. Changes take effect from the next episode.
-
-**FR-GUI-CTRL-09** **Speed slider** — controls the visualisation delay between steps during a live episode (range: instant → 500 ms/step).
+**FR-GUI-CTRL-04** **Save / Load Q-Table** buttons in the Train tab provide an alternative to the `[S]`/`[L]` hotkeys.
 
 ---
 
@@ -227,7 +235,7 @@ The dashboard shall be a side panel (or bottom bar) displaying the following liv
 
 ### 6.1 Performance
 **NFR-PERF-01** 1,000 training episodes on a 10 × 10 grid shall complete in ≤ 60 seconds on a standard laptop (no GPU required).  
-**NFR-PERF-02** GUI shall remain responsive (≥ 30 FPS or equivalent) during training; the training loop must run in a background thread or process.
+**NFR-PERF-02** GUI shall remain responsive during training; the training loop runs in a background daemon thread and communicates with the main thread exclusively via a `queue.Queue`.
 
 ### 6.2 Usability
 **NFR-USE-01** The application shall follow Nielsen's 10 Usability Heuristics (visibility of system status, user control, error prevention, recognition over recall, etc.).  
@@ -245,7 +253,7 @@ The dashboard shall be a side panel (or bottom bar) displaying the following liv
 ### 6.4 Testing
 **NFR-TEST-01** TDD methodology: Red → Green → Refactor.  
 **NFR-TEST-02** Test coverage ≥ 85 % (`pytest --cov`).  
-**NFR-TEST-03** Tests cover: Q-update correctness, ε-greedy action selection, environment step/reset, reward delivery, boundary behaviour, Q-Table save/load round-trip.
+**NFR-TEST-03** Tests cover: Q-update correctness, ε-greedy action selection, environment step/reset, reward delivery, trap termination, boundary behaviour, Q-Table save/load round-trip, visited-state tracking.
 
 ### 6.5 Dependency Management
 **NFR-DEP-01** `uv` is the sole package manager; `pip` and standalone `venv` commands are prohibited.  
@@ -266,13 +274,13 @@ The dashboard shall be a side panel (or bottom bar) displaying the following liv
 
 ## 7. Reward Specification
 
-| Cell / Situation | Reward |
-|---|---|
-| Normal (empty) cell | −1 |
-| Wind Zone cell | −3 |
-| Trap cell | −10 |
-| Building cell | Move blocked; drone stays; reward −1 (boundary penalty) |
-| Target cell | +50 (episode terminates) |
+| Cell / Situation | Reward | Terminal? |
+|---|---|---|
+| Normal (empty) cell | −1 | No |
+| Wind Zone cell | −3 | No |
+| Trap cell | −10 | **Yes** — episode ends |
+| Building cell | Move blocked; drone stays; reward −1 | No |
+| Target cell | +50 | **Yes** — episode ends (success) |
 
 All reward values are configurable via `config/env.json`.
 
@@ -282,15 +290,16 @@ All reward values are configurable via `config/env.json`.
 
 | ID | As a… | I want to… | So that… |
 |---|---|---|---|
-| US-01 | Student | Start training on the default grid | I can see Q-Learning in action immediately |
+| US-01 | Student | Start training with `[SPACE]` on the default grid | I can see Q-Learning in action immediately |
 | US-02 | Student | Edit the grid before training | I can experiment with different obstacle layouts |
-| US-03 | Student | Pause training mid-run | I can inspect the Q-Table and policy arrows at a stable point |
-| US-04 | Student | Watch the drone navigate step-by-step | I can intuitively understand the learned policy |
+| US-03 | Student | Pause training with `[SPACE]` | I can see the optimal greedy path at the current policy state |
+| US-04 | Student | Watch the drone navigate step-by-step | I can intuitively understand the exploration process |
 | US-05 | Student | View the convergence graph | I can confirm the algorithm is learning and stabilising |
-| US-06 | Student | Save and reload a Q-Table | I can continue a training run across sessions |
-| US-07 | Instructor | Run a greedy evaluation episode | I can verify the final policy without further training |
+| US-06 | Student | Save and reload a Q-Table with `[S]`/`[L]` | I can continue a training run across sessions |
+| US-07 | Instructor | Run a greedy evaluation episode on pause | I can verify the final policy without further training |
 | US-08 | Self-learner | Adjust hyperparameters at runtime | I can compare different α/γ/ε settings without restarting |
-| US-09 | Student | Export the convergence graph | I can include it in my assignment report |
+| US-09 | Student | Export the convergence graph as PNG | I can include it in my assignment report |
+| US-10 | Student | Toggle `[H]` heatmap and `[A]` arrows | I can inspect Q-value distribution and policy independently |
 
 ---
 
@@ -298,14 +307,31 @@ All reward values are configurable via `config/env.json`.
 
 | Constraint | Details |
 |---|---|
-| GUI framework | Local desktop Python GUI — **tkinter** or **pygame** (no web frameworks, no React, no Electron) |
+| GUI framework | **tkinter** (ttk widgets; dark theme via centralized `src/gui/theme.py`) |
 | Language | Python 3.11+ |
 | RL approach | Tabular Q-Learning only (no neural networks, no deep RL) |
 | Package manager | `uv` exclusively |
 | Linter | Ruff — zero errors required |
-| Layer separation | SDK layer (env + RL) must be fully decoupled from GUI layer |
+| Layer separation | `src/core/` (env + RL logic) → `src/sdk/` (DroneSimSDK facade) → `src/gui/` (display only) |
 | Config | All tunable values in `config/*.json`; loaded at startup |
 | File layout | Max 150 lines per `.py` file; split modules when limit approached |
+| Thread model | Training loop in daemon thread; GUI/thread communication via `queue.Queue` only |
+
+### Project Structure
+
+```text
+project-root/
+├── src/
+│   ├── core/          # GridWorld, QLearningAgent, CellType, episode stats
+│   ├── sdk/           # DroneSimSDK facade, TrainingLoop, GridSDK, persistence
+│   └── gui/           # App, GridCanvas, ControlPanel, StatusBar, Dashboard, GraphPanel
+├── tests/             # Unit & Integration (≥85 % coverage)
+├── docs/              # PRD, PLAN, TODO, CLAUDE.md
+├── config/            # env.json, rl.json
+├── assets/            # Static assets
+├── pyproject.toml     # uv, Ruff, and coverage rules
+└── README.md          # User manual
+```
 
 ---
 
@@ -313,9 +339,9 @@ All reward values are configurable via `config/env.json`.
 
 1. The grid is small enough (≤ 20 × 20) that a tabular Q-Table fits comfortably in memory.
 2. The user runs the application on a machine with Python 3.11+ and `uv` installed.
-3. A path from Start to Target always exists (the grid editor shall warn if it does not).
+3. A path from Start to Target always exists (the grid editor warns and reverts if it does not).
 4. A single drone agent occupies one cell at a time; no multi-agent scenarios.
-5. Training is single-threaded in the RL logic; GUI updates happen on the main thread via a queue or callback mechanism.
+5. Training runs in a background thread; GUI updates happen on the main thread via a queue polled every 50 ms.
 6. The assignment is individual work; no collaborative / networked features are required.
 
 ---
@@ -329,8 +355,9 @@ All reward values are configurable via `config/env.json`.
 | Multi-agent simulation | Not specified in course requirements |
 | 3-D environment | Complexity exceeds course scope |
 | Continuous action / state spaces | Q-Table requires discrete state-action spaces |
-| Database persistence | JSON / NumPy file I-O is sufficient |
+| Database persistence | NumPy `.npy` file I/O is sufficient |
 | Deployment / packaging (Docker, PyInstaller) | Not required by submission guidelines |
+| Graph zoom/pan toolbar | Removed; Export PNG button retained |
 
 ---
 
@@ -339,12 +366,14 @@ All reward values are configurable via `config/env.json`.
 | Milestone | Deliverable | Notes |
 |---|---|---|
 | M1 — Environment | `GridWorld` class passing all unit tests | FR-ENV-01 to FR-ENV-07 |
-| M2 — RL Engine | `QLearningAgent` class with save/load, passing all unit tests | FR-RL-01 to FR-RL-09 |
-| M3 — SDK Integration | SDK facade exposing `train()`, `evaluate()`, `get_policy()` | NFR-CODE-04 |
-| M4 — GUI Skeleton | Window, grid canvas, control panel wired to SDK | FR-GUI-GRID-01 to FR-GUI-CTRL-09 |
+| M2 — RL Engine | `QLearningAgent` with save/load and visited-state tracking | FR-RL-01 to FR-RL-10 |
+| M3 — SDK Integration | `DroneSimSDK` facade + `TrainingLoop` with queue communication | NFR-CODE-04 |
+| M4 — GUI Skeleton | Window, grid canvas, control panel wired to SDK | FR-GUI-GRID-01 to FR-GUI-CTRL-04 |
 | M5 — Dashboard & Graph | Live stats panel and convergence graph integrated | FR-GUI-DASH, FR-GUI-GRAPH |
 | M6 — Grid Editor | Click/drag cell editing with constraint enforcement | FR-GUI-GRID-05, FR-GUI-GRID-06 |
-| M7 — Polish & QA | ≥ 85 % test coverage, zero Ruff errors, README complete | All NFRs |
+| M7 — Visualisation | Heatmap, visited-state arrows, step-by-step drone animation | FR-GUI-GRID-07, FR-GUI-DRONE-01 to 03 |
+| M8 — Status Bar & Hotkeys | Bottom status bar with full keyboard control | FR-GUI-CTRL-01 to 04 |
+| M9 — Polish & QA | ≥ 85 % test coverage, zero Ruff errors, README complete | All NFRs |
 
 ---
 
