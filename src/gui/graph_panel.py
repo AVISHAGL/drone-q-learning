@@ -3,7 +3,7 @@
 import tkinter as tk
 from tkinter import filedialog, ttk
 
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from src.core.episode_stats import EpisodeStats
@@ -45,10 +45,6 @@ class GraphPanel(ttk.Frame):
         self._canvas = FigureCanvasTkAgg(self._fig, master=self)
         self._canvas.get_tk_widget().configure(bg=theme.BG)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
-
-        toolbar = NavigationToolbar2Tk(self._canvas, self)
-        toolbar.configure(bg=theme.BG)
-        toolbar.update()
 
         ctrl = ttk.Frame(self)
         ctrl.pack(fill="x")

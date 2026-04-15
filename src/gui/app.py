@@ -50,8 +50,8 @@ class App(tk.Tk):
         self._syncing: bool = False          # re-entrancy guard for _sync_canvas_size
         self._last_size: int = 0             # last size applied to canvas
         self._build_layout()
-        # Realize natural widget sizes, then pin root geometry so that
-        # canvas.config() calls cannot cause the root window to auto-shrink.
+        # Wire [E] hotkey to the ControlPanel toggle so the button label updates.
+        self._bar._on_edit_toggle = self._ctrl._toggle_edit_mode
         self.update_idletasks()
         self.geometry(self.geometry())
         self.protocol("WM_DELETE_WINDOW", self._on_close)

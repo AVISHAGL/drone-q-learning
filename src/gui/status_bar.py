@@ -82,7 +82,11 @@ class StatusBar(ttk.Frame):
         elif k == "a":
             self._canvas.toggle_arrows()
         elif k == "e":
-            self._canvas.set_edit_mode(not self._canvas.is_edit_mode())
+            cb = getattr(self, "_on_edit_toggle", None)
+            if cb:
+                cb()
+            else:
+                self._canvas.set_edit_mode(not self._canvas.is_edit_mode())
         elif k == "s":
             self._save_brain()
         elif k == "l":
