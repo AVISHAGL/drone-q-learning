@@ -49,11 +49,7 @@ def _hex_lerp(a: str, b: str, t: float) -> str:
     """Linearly interpolate between two '#rrggbb' hex colours; t in [0, 1]."""
     ar, ag, ab = int(a[1:3], 16), int(a[3:5], 16), int(a[5:7], 16)
     br, bg, bb = int(b[1:3], 16), int(b[3:5], 16), int(b[5:7], 16)
-    return "#{:02x}{:02x}{:02x}".format(
-        int(ar + (br - ar) * t),
-        int(ag + (bg - ag) * t),
-        int(ab + (bb - ab) * t),
-    )
+    return f"#{int(ar + (br - ar) * t):02x}{int(ag + (bg - ag) * t):02x}{int(ab + (bb - ab) * t):02x}"
 
 
 def _value_to_color(t: float) -> str:
@@ -92,6 +88,8 @@ class GridCanvas(GridEditorMixin, DroneSpriteMixin, tk.Canvas):
         self._trail: list[int] = []
         self._drone_state: int | None = None
         self._edit_mode_enabled: bool = False
+        self._show_heatmap: bool = True
+        self._show_arrows: bool = True
         self.set_edit_mode(True)
         self.bind("<Configure>", self._on_resize)
 
@@ -120,6 +118,16 @@ class GridCanvas(GridEditorMixin, DroneSpriteMixin, tk.Canvas):
     # Public refresh API
     # ------------------------------------------------------------------
 
+    def toggle_heatmap(self) -> None:
+        """Toggle value-heatmap colouring on EMPTY cells."""
+        self._show_heatmap = not self._show_heatmap
+        self.after_idle(lambda: self.refresh(policy=self._sdk.get_policy()))
+
+    def toggle_arrows(self) -> None:
+        """Toggle policy-arrow overlay."""
+        self._show_arrows = not self._show_arrows
+        self.after_idle(lambda: self.refresh(policy=self._sdk.get_policy()))
+
     def refresh(
         self,
         policy: dict[int, int] | None = None,
@@ -128,7 +136,7 @@ class GridCanvas(GridEditorMixin, DroneSpriteMixin, tk.Canvas):
     ) -> None:
         """Full redraw: heatmap grid → policy arrows → trail → drone."""
         self.draw_grid()
-        if policy:
+        if policy and self._show_arrows:
             self.draw_policy_arrows(policy)
         if trail:
             self.render_trail(trail)
@@ -143,7 +151,7 @@ class GridCanvas(GridEditorMixin, DroneSpriteMixin, tk.Canvas):
         """Draw all cells; EMPTY cells are coloured by normalised Q-value."""
         self.delete("grid_tile")
         grid   = self._sdk.get_grid()
-        vmap   = self._build_value_map()
+        vmap   = self._build_value_map() if self._show_heatmap else None
 
         for r in range(self._rows):
             for c in range(self._cols):
@@ -202,16 +210,19 @@ class GridCanvas(GridEditorMixin, DroneSpriteMixin, tk.Canvas):
     # ------------------------------------------------------------------
 
     def draw_policy_arrows(self, policy: dict[int, int]) -> None:
-        """Overlay directional arrows for the greedy policy.
+        """Overlay directional arrows for the greedy policy on visited states only.
 
-        Arrows are rendered in a light colour so they are legible on both
-        the dark base and the heatmap-tinted EMPTY cells.
+        Arrows are only drawn for states the agent has visited (i.e. taken at
+        least one action from) so that uninitialised zero-Q states remain clean.
         """
         self.delete("policy_arrow")
-        grid     = self._sdk.get_grid()
-        fsize    = max(8, self._cell_px // 3)
+        grid    = self._sdk.get_grid()
+        visited = self._sdk.get_visited_states()
+        fsize   = max(8, self._cell_px // 3)
 
         for state, action in policy.items():
+            if state not in visited:
+                continue
             row, col = self._sdk._env.state_to_pos(state)
             if grid[row][col] in (CellType.BUILDING, CellType.TARGET):
                 continue

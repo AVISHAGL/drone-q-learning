@@ -1,7 +1,6 @@
 """DroneSimSDK — single façade entry point for all simulation logic."""
 
 import queue
-from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -11,16 +10,17 @@ from src.core.config_loader import load_env_config, load_rl_config
 from src.core.episode_stats import EpisodeStats
 from src.core.grid_world import GridWorld
 from src.core.q_agent import QLearningAgent
-from src.sdk.persistence import load_grid, load_q_table, save_grid, save_q_table
+from src.sdk.grid_sdk import GridSDK
+from src.sdk.persistence import load_q_table, save_q_table
 from src.sdk.training_loop import TrainingLoop
 
 __all__ = ["DroneSimSDK"]
 
+
 class DroneSimSDK:
     """Façade exposing all simulation capabilities to the GUI layer.
 
-    The GUI must only import from this class — never from src.core directly.
-    All business logic (RL, environment, persistence) is encapsulated here.
+    Grid operations are delegated to GridSDK. GUI must import only from here.
     """
 
     def __init__(self) -> None:
@@ -33,7 +33,7 @@ class DroneSimSDK:
         )
         self._queue: queue.Queue = queue.Queue()
         self._loop: TrainingLoop | None = None
-        self._default_grid = deepcopy(self._env.get_grid())
+        self._grid = GridSDK(self._env)
 
     def start_training(self) -> None:
         """Begin (or continue) the Q-Learning training loop."""
@@ -60,7 +60,7 @@ class DroneSimSDK:
             self._loop = None
 
     def reset(self) -> None:
-        """Clear Q-Table, episode counter, and stats queue."""
+        """Clear Q-Table, episode counter, visited states, and stats queue."""
         self.stop()
         self._agent.reset()
         while not self._queue.empty():
@@ -104,28 +104,36 @@ class DroneSimSDK:
         """Return the stats queue polled by the GUI."""
         return self._queue
 
+    def get_visited_states(self) -> frozenset[int]:
+        """Return states visited by the agent since last reset."""
+        return self._agent.get_visited_states()
+
     def set_hyperparams(self, **kwargs: float) -> None:
         """Update agent hyperparameters at runtime."""
         self._agent.update_params(**kwargs)
 
     def set_vis_delay(self, ms: int) -> None:
-        """Set animation delay (ms) in the training loop."""
+        """Set per-step animation delay in milliseconds (0 = fastest)."""
         if self._loop is not None:
             self._loop.set_vis_delay(ms)
 
+    def get_vis_delay(self) -> int:
+        """Return current per-step animation delay in milliseconds."""
+        if self._loop is not None:
+            return int(self._loop.vis_delay * 1000)
+        return int(self._rl_cfg.get("vis_delay_ms", 0))
+
     def update_grid(self, row: int, col: int, cell_type: CellType) -> None:
         """Change a cell type in the live environment."""
-        self._env.set_cell(row, col, cell_type)
-
-    def load_default_grid(self) -> None:
-        """Restore the grid to the layout loaded at startup."""
-        for r, row in enumerate(self._default_grid):
-            for c, cell in enumerate(row):
-                self._env.set_cell(r, c, cell)
+        self._grid.update_grid(row, col, cell_type)
 
     def get_grid(self) -> list[list[CellType]]:
         """Return a deep copy of the current grid."""
-        return self._env.get_grid()
+        return self._grid.get_grid()
+
+    def load_default_grid(self) -> None:
+        """Restore the grid to the layout loaded at startup."""
+        self._grid.load_default_grid()
 
     def save_q_table(self, path: str | Path) -> None:
         """Save the current Q-Table to a .npy file."""
@@ -136,13 +144,3 @@ class DroneSimSDK:
         q = load_q_table(path)
         self._agent.set_q_table(q)
 
-    def save_grid_to_file(self, path: str | Path) -> None:
-        """Save the current grid layout to a JSON file."""
-        save_grid(self._env.get_grid(), path)
-
-    def load_grid_from_file(self, path: str | Path) -> None:
-        """Load a grid layout from a JSON file."""
-        grid = load_grid(path)
-        for r, row in enumerate(grid):
-            for c, cell in enumerate(row):
-                self._env.set_cell(r, c, cell)

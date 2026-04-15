@@ -536,6 +536,131 @@
 
 ---
 
+## Phase 6 — Exploration Visualisation & UX Improvements
+
+> Added 2026-04-15 per professor's requirements.
+
+### 6.1 Visual Delay — Step-by-Step Exploration (P1 — IMPLEMENTED)
+
+**Goal:** Allow the user to slow training so each step is visually rendered (drone moves, explores, backtracks).
+
+#### 6.1.1 Core — `StepUpdate` dataclass
+
+- [x] P1 Add `StepUpdate` dataclass to `src/core/episode_stats.py`
+- [x] P1 `StepUpdate` has field `state: int` — current drone position
+- [x] P1 `StepUpdate` has field `trail: list[int]` — path taken so far in episode
+- [x] P1 Add `StepUpdate` to `__all__` in `episode_stats.py`
+- [x] P1 Verify `episode_stats.py` ≤ 150 lines after change
+- [x] P1 Run `uv run ruff check src/core/episode_stats.py` → 0 errors
+
+#### 6.1.2 SDK — `TrainingLoop` step posting
+
+- [x] P1 Add `import time` to `src/sdk/training_loop.py`
+- [x] P1 Import `StepUpdate` from `src.core.episode_stats` in `training_loop.py`
+- [x] P1 In `_run()`, track `trail: list[int]` starting from `env.reset()` state
+- [x] P1 Append each `next_state` to `trail` after every step
+- [x] P1 After each step, if `vis_delay > 0`: post `StepUpdate(state, trail.copy())` to queue
+- [x] P1 After each step, if `vis_delay > 0`: call `time.sleep(self.vis_delay)`
+- [x] P1 Sleep and queue post must occur BEFORE the `if done: break` check
+- [x] P1 `vis_delay_ms` default remains `0` in `config/rl.json` (no delay by default)
+- [x] P1 Verify `training_loop.py` ≤ 150 lines after change
+- [x] P1 Run `uv run ruff check src/sdk/training_loop.py` → 0 errors
+
+#### 6.1.3 GUI — `_poll_queue` step handling
+
+- [x] P1 In `App._poll_queue`, distinguish `StepUpdate` from `EpisodeStats` via `hasattr`
+- [x] P1 On `StepUpdate`: call `canvas.refresh(policy, drone_state, trail)` to render live step
+- [x] P1 On `StepUpdate`: update `self._last_trail` so episode-end refresh is consistent
+- [x] P1 On `EpisodeStats`: existing dashboard/graph/canvas logic unchanged
+- [x] P1 Verify `app.py` imports unchanged (no new imports from `src.core`)
+- [x] P1 Run `uv run ruff check src/gui/app.py` → 0 errors
+
+#### 6.1.4 Tests
+
+- [ ] P2 Write test: `TrainingLoop` with `vis_delay_ms=50` posts `StepUpdate` objects before `EpisodeStats`
+- [ ] P2 Write test: `StepUpdate.trail` length equals number of steps taken
+- [ ] P2 Write test: `StepUpdate` is importable from `src.core.episode_stats`
+- [ ] P2 Run `uv run pytest tests/sdk/test_training_loop.py` → all GREEN
+
+---
+
+### 6.2 Q-Table Arrows — Visited States Only (P2 — IMPLEMENTED)
+
+**Goal:** Show policy arrows only for states the agent has actually visited, not for uninitialised zero-Q states.
+
+#### 6.2.1 Core — visit tracking in `QLearningAgent`
+
+- [x] P2 Add `_visited: set[int]` to `QLearningAgent.__init__` initialised as `set()`
+- [x] P2 In `update()`, add `state` to `self._visited`
+- [x] P2 In `reset()`, clear `self._visited`
+- [x] P2 Add `get_visited_states() -> frozenset[int]` public method
+- [x] P2 Verify `q_agent.py` ≤ 150 lines after change — **147 lines** ✓
+- [x] P2 Run `uv run ruff check src/core/q_agent.py` → 0 errors
+
+#### 6.2.2 SDK — expose visited states
+
+- [x] P2 Add `get_visited_states(self) -> frozenset[int]` to `DroneSimSDK`
+- [x] P2 Delegate to `self._agent.get_visited_states()`
+- [x] P2 `drone_sim_sdk.py` reached **152 lines** — ⚠️ 2 lines over limit (pre-existing growth; flagged for split in next refactor phase)
+
+#### 6.2.3 GUI — filter arrows in `GridCanvas`
+
+- [x] P2 In `draw_policy_arrows()`, call `self._sdk.get_visited_states()` to get filter set
+- [x] P2 Skip rendering arrow for any state not in visited set
+- [x] P2 Behaviour: no arrows shown on fresh launch; arrows appear state-by-state as training runs
+- [x] P2 Run `uv run ruff check src/gui/grid_canvas.py` → 0 errors
+
+#### 6.2.4 Tests
+
+- [ ] P2 Write test: `get_visited_states()` returns empty set before any `update()` call
+- [ ] P2 Write test: after `update(state=5, ...)`, `5` is in `get_visited_states()`
+- [ ] P2 Write test: `reset()` clears visited set
+- [ ] P2 Run `uv run pytest tests/core/test_q_agent.py` → all GREEN
+
+---
+
+### 6.3 Bottom Status Bar with Hotkeys (P3 — PLANNED)
+
+**Goal:** Move action buttons to a persistent bottom status bar with keyboard shortcuts, freeing up panel space.
+
+#### 6.3.1 GUI — `StatusBar` widget
+
+- [ ] P3 Create `src/gui/status_bar.py` (new file, ≤ 150 lines)
+- [ ] P3 Define `class StatusBar(ttk.Frame)` with compact button row
+- [ ] P3 Buttons: Start `[S]`, Pause `[P]`, Stop `[X]`, Reset `[R]`, Greedy `[G]`
+- [ ] P3 Each button displays hotkey hint in label: e.g. `"Start  [S]"`
+- [ ] P3 Root window binds: `<s>` → start, `<p>` → pause, `<x>` → stop, `<r>` → reset, `<g>` → greedy
+- [ ] P3 Status label at right edge shows current state: `"Training"`, `"Paused"`, `"Idle"`
+- [ ] P3 `StatusBar.set_status(text: str)` method updates the label
+- [ ] P3 Verify `status_bar.py` ≤ 150 lines
+- [ ] P3 Run `uv run ruff check src/gui/status_bar.py` → 0 errors
+
+#### 6.3.2 GUI — integrate into `App`
+
+- [ ] P3 Pack `StatusBar` at `side="bottom"` in `App._build_layout()`
+- [ ] P3 Remove or collapse existing button section from `ControlPanel` (or make optional)
+- [ ] P3 SDK callbacks wired from `StatusBar` to `DroneSimSDK`
+- [ ] P3 Verify `app.py` ≤ 150 lines after refactor (split if needed)
+- [ ] P3 Run `uv run ruff check src/gui/app.py` → 0 errors
+
+#### 6.3.3 Tests
+
+- [ ] P3 Manual test: press `[S]` → training starts, status bar shows `"Training"`
+- [ ] P3 Manual test: press `[P]` → training pauses, status bar shows `"Paused"`
+- [ ] P3 Manual test: press `[G]` → greedy path rendered on canvas
+
+---
+
+### 6.4 Phase 6 Completion Gate
+
+- [ ] P1 `uv run ruff check .` → 0 errors
+- [ ] P1 `uv run pytest` → all GREEN
+- [ ] P1 Visual delay: set slider to 100 ms, confirm drone steps are individually visible
+- [ ] P2 Visited arrows: confirm no arrows shown on fresh start; arrows appear after training
+- [ ] P3 Status bar: confirm all hotkeys functional
+
+---
+
 ## Phase 5 — GUI Skeleton (M4)
 
 ### 5.1 App Root Window

@@ -1,0 +1,19 @@
+# Python bytecode and environments
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Build and distribution
+dist/
+build/
+*.egg-info/
+
+# Binary Assets (images, icons)
+assets/
+
+# Temporary files
+.DS_Store
+*.log

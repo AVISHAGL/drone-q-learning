@@ -1,4 +1,4 @@
-"""ControlPanel — tabbed side-panel for training controls and configuration."""
+"""ControlPanel — tabbed side-panel for grid editing and configuration."""
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -10,33 +10,25 @@ from src.gui.tooltip import add_tooltip
 __all__ = ["ControlPanel"]
 
 _TIP = {
-    "start":      "Begin Q-Learning training from current episode",
-    "pause":      "Suspend or continue training without resetting Q-Table",
-    "stop":       "End training session; Q-Table is preserved",
-    "reset":      "Clear Q-Table and restart from episode 0",
-    "greedy":     "Visualise current policy (ε=0); does not modify Q-Table",
-    "save":       "Export current Q-Table to .npy file",
-    "load":       "Import Q-Table from .npy file",
-    "grid_reset": "Restore default grid layout from config/env.json",
-    "speed":      "Control animation delay per step (0 ms = fastest)",
+    "save":  "Export current Q-Table to .npy file",
+    "load":  "Import Q-Table from .npy file",
+    "speed": "Control animation delay per step (0 ms = fastest)",
 }
 
 
 class ControlPanel(ttk.Frame):
     """Tabbed side-panel frame.
 
-    Tab "Train"  — edit mode, cell type palette, training action buttons.
+    Tab "Train"  — edit mode toggle, cell-type palette, Q-Table save/load.
     Tab "Config" — hyperparameters, speed slider.
+
+    Training is controlled entirely via keyboard hotkeys (see StatusBar).
     """
 
-    def __init__(self, master, sdk, canvas=None,  # type: ignore[type-arg]
-                 on_greedy_cb=None, on_grid_reset_cb=None, **kw) -> None:
+    def __init__(self, master, sdk, canvas=None, **kw) -> None:  # type: ignore[type-arg]
         super().__init__(master, **kw)
         self._sdk = sdk
         self._canvas = canvas
-        self._on_greedy = on_greedy_cb
-        self._on_grid_reset = on_grid_reset_cb
-        self._paused = False
 
         nb = ttk.Notebook(self)
         nb.pack(fill="x", padx=2, pady=(4, 0))
@@ -55,17 +47,15 @@ class ControlPanel(ttk.Frame):
     # ------------------------------------------------------------------
 
     def _build_train_tab(self, parent: ttk.Frame) -> None:
-        """Populate the Train tab: edit controls + action buttons."""
         self._build_edit_section(parent)
-        self._build_buttons(parent)
+        self._build_qtable_section(parent)
 
     def _build_config_tab(self, parent: ttk.Frame) -> None:
-        """Populate the Config tab: hyperparameters + speed."""
         self._build_hyperparam_panel(parent)
         self._build_speed_slider(parent)
 
     # ------------------------------------------------------------------
-    # Edit section (inside Train tab)
+    # Edit section
     # ------------------------------------------------------------------
 
     def _build_edit_section(self, parent: ttk.Frame) -> None:
@@ -76,7 +66,6 @@ class ControlPanel(ttk.Frame):
         outer = ttk.LabelFrame(parent, text="Grid Editing", padding=(6, 4))
         outer.pack(fill="x", padx=4, pady=(6, 2))
 
-        # --- Toggle + preview on one row ---
         top_row = ttk.Frame(outer)
         top_row.pack(fill="x", pady=(0, 4))
 
@@ -97,43 +86,32 @@ class ControlPanel(ttk.Frame):
         self._selected_type_label = ttk.Label(top_row, text="EMPTY", width=9)
         self._selected_type_label.pack(side="left")
 
-        # --- 2-column palette ---
         palette_frame = ttk.Frame(outer)
         palette_frame.pack(fill="x")
         self._palette_frame = palette_frame
         self._canvas.add_cell_type_palette(palette_frame)
 
-        # Trace selection → update preview
         if hasattr(self._canvas, "_selected_var"):
             self._canvas._selected_var.trace("w", self._update_preview)
             self._update_preview()
 
     # ------------------------------------------------------------------
-    # Action buttons (inside Train tab)
+    # Q-Table persistence section
     # ------------------------------------------------------------------
 
-    def _build_buttons(self, parent: ttk.Frame) -> None:
-        """Single-column list of training action buttons with compact padding."""
-        frame = ttk.LabelFrame(parent, text="Training", padding=(4, 2))
+    def _build_qtable_section(self, parent: ttk.Frame) -> None:
+        """Save and Load Q-Table buttons."""
+        frame = ttk.LabelFrame(parent, text="Q-Table", padding=(4, 2))
         frame.pack(fill="x", padx=4, pady=(4, 2))
-
-        buttons = [
-            ("Start Training",   self._start,        "start"),
-            ("Pause / Resume",   self._pause_resume,  "pause"),
-            ("Stop Training",    self._stop,          "stop"),
-            ("Reset Training",   self._reset,         "reset"),
-            ("Run Greedy",       self._greedy,        "greedy"),
-            ("Save Q-Table",     self._save,          "save"),
-            ("Load Q-Table",     self._load,          "load"),
-            ("Reset Grid",       self._grid_reset,    "grid_reset"),
-        ]
-        for label, cmd, tip in buttons:
-            btn = ttk.Button(frame, text=label, command=cmd)
-            btn.pack(fill="x", padx=2, pady=1)
-            add_tooltip(btn, _TIP[tip])
+        btn_save = ttk.Button(frame, text="Save Q-Table", command=self._save)
+        btn_save.pack(fill="x", padx=2, pady=1)
+        add_tooltip(btn_save, _TIP["save"])
+        btn_load = ttk.Button(frame, text="Load Q-Table", command=self._load)
+        btn_load.pack(fill="x", padx=2, pady=1)
+        add_tooltip(btn_load, _TIP["load"])
 
     # ------------------------------------------------------------------
-    # Hyperparameter panel (inside Config tab)
+    # Hyperparameter panel
     # ------------------------------------------------------------------
 
     def _build_hyperparam_panel(self, parent: ttk.Frame) -> None:
@@ -158,7 +136,7 @@ class ControlPanel(ttk.Frame):
         ttk.Button(frame, text="Apply", command=self._apply).pack(fill="x", pady=(4, 0))
 
     # ------------------------------------------------------------------
-    # Speed slider (inside Config tab)
+    # Speed slider
     # ------------------------------------------------------------------
 
     def _build_speed_slider(self, parent: ttk.Frame) -> None:
@@ -199,34 +177,6 @@ class ControlPanel(ttk.Frame):
         except (KeyError, ValueError):
             pass
 
-    # ------------------------------------------------------------------
-    # SDK action methods (unchanged)
-    # ------------------------------------------------------------------
-
-    def _start(self) -> None:
-        self._sdk.start_training()
-        self._paused = False
-
-    def _pause_resume(self) -> None:
-        if self._paused:
-            self._sdk.resume()
-        else:
-            self._sdk.pause()
-        self._paused = not self._paused
-
-    def _stop(self) -> None:
-        self._sdk.stop()
-        self._paused = False
-
-    def _reset(self) -> None:
-        self._sdk.reset()
-        self._paused = False
-
-    def _greedy(self) -> None:
-        path, stats = self._sdk.evaluate()
-        if self._on_greedy:
-            self._on_greedy(path, stats)
-
     def _save(self) -> None:
         p = filedialog.asksaveasfilename(defaultextension=".npy",
                                          filetypes=[("NumPy", "*.npy")])
@@ -243,11 +193,6 @@ class ControlPanel(ttk.Frame):
                 self._sdk.load_q_table(p)
             except Exception as exc:  # noqa: BLE001
                 messagebox.showerror("Load Error", str(exc))
-
-    def _grid_reset(self) -> None:
-        self._sdk.load_default_grid()
-        if self._on_grid_reset:
-            self._on_grid_reset()
 
     def _apply(self) -> None:
         kwargs: dict[str, float] = {}

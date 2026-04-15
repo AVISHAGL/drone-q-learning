@@ -5,11 +5,11 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.core.version import __version__
+from src.gui import theme
 from src.gui.control_panel import ControlPanel
 from src.gui.dashboard import Dashboard
 from src.gui.graph_panel import GraphPanel
 from src.gui.grid_canvas import GridCanvas
-from src.gui import theme
 from src.sdk.drone_sim_sdk import DroneSimSDK
 
 __all__ = ["App"]
@@ -47,7 +47,13 @@ class App(tk.Tk):
 
         self._vis_n: int = int(self._sdk._rl_cfg.get("vis_every_n", 10))
         self._last_trail: list[int] = []
+        self._syncing: bool = False          # re-entrancy guard for _sync_canvas_size
+        self._last_size: int = 0             # last size applied to canvas
         self._build_layout()
+        # Realize natural widget sizes, then pin root geometry so that
+        # canvas.config() calls cannot cause the root window to auto-shrink.
+        self.update_idletasks()
+        self.geometry(self.geometry())
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(50, self._poll_queue)
         self.bind("<Configure>", self._sync_canvas_size)
@@ -102,12 +108,21 @@ class App(tk.Tk):
         """
         if event.widget is not self:
             return
+        if self._syncing:
+            return
         graph_h = self._graph.winfo_reqheight() or _GRAPH_H
-        avail_w = max(300, event.width  - _RIGHT_W - 2)
-        avail_h = max(300, event.height - graph_h  - 2)
+        avail_w = max(300, event.width  - _RIGHT_W)
+        avail_h = max(300, event.height - graph_h)
         size = min(avail_w, avail_h)
-        if self._canvas.winfo_reqwidth() != size:
-            self._canvas.config(width=size, height=size)
+        if size == self._last_size:
+            return
+        self._syncing = True
+        self._last_size = size
+        self._canvas.config(width=size, height=size)
+        self.after_idle(self._clear_syncing)
+
+    def _clear_syncing(self) -> None:
+        self._syncing = False
 
     # ------------------------------------------------------------------
     # Queue polling
@@ -117,14 +132,24 @@ class App(tk.Tk):
         q = self._sdk.get_stats_queue()
         try:
             while True:
-                stats = q.get_nowait()
-                self._dash.update(stats)
-                self._dash.set_epsilon(self._sdk._agent._epsilon)
-                self._graph.append(stats)
-                if stats.episode % self._vis_n == 0:
+                item = q.get_nowait()
+                if hasattr(item, "episode"):
+                    # EpisodeStats — update dashboard, graph, and canvas
+                    self._dash.update(item)
+                    self._dash.set_epsilon(self._sdk._agent._epsilon)
+                    self._graph.append(item)
+                    if item.episode % self._vis_n == 0:
+                        self._canvas.refresh(
+                            policy=self._sdk.get_policy(),
+                            trail=self._last_trail if self._last_trail else None,
+                        )
+                else:
+                    # StepUpdate — render live drone position and trail
+                    self._last_trail = item.trail
                     self._canvas.refresh(
                         policy=self._sdk.get_policy(),
-                        trail=self._last_trail if self._last_trail else None,
+                        drone_state=item.state,
+                        trail=item.trail,
                     )
         except queue.Empty:
             pass

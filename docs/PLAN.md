@@ -544,4 +544,71 @@ addopts = "--cov=src --cov-report=term-missing"
 
 ---
 
+---
+
+## 12. Phase 6 — Exploration Visualisation & UX Improvements
+
+> Added 2026-04-15 per professor's requirements.
+
+### 12.1 Feature A — Visual Delay (Step-by-Step Exploration)
+
+**Motivation:** Training currently runs at full CPU speed; the drone's exploration path is invisible. A configurable per-step delay lets the user observe each move, including backtracking.
+
+**Architecture change:** `TrainingLoop._run()` emits a new `StepUpdate` message after every step (when `vis_delay > 0`) in addition to the existing end-of-episode `EpisodeStats`. The GUI handles both message types in `_poll_queue`.
+
+```
+TrainingLoop (background thread)
+  for each episode:
+    state = env.reset(); trail = [state]
+    for each step:
+      action = agent.select_action(state)            # ε-greedy
+      next_state, reward, done = env.step(action)
+      agent.update(state, action, reward, next_state)
+      state = next_state; trail.append(state)
+      if vis_delay > 0:
+        queue.put(StepUpdate(state=state, trail=trail.copy()))
+        time.sleep(vis_delay)                        # ← NEW
+      if done: break
+    queue.put(EpisodeStats(...))                     # unchanged
+```
+
+**New data type** (`src/core/episode_stats.py`):
+```python
+@dataclass
+class StepUpdate:
+    state: int          # current drone grid state index
+    trail: list[int]    # full path from episode start to current step
+```
+
+**GUI handling** (`App._poll_queue`): uses `hasattr(item, "episode")` to distinguish `EpisodeStats` from `StepUpdate`. On `StepUpdate`: calls `canvas.refresh(policy, drone_state=item.state, trail=item.trail)`.
+
+**Configuration:** `vis_delay_ms` key in `config/rl.json` (default `0`). The existing speed slider in `ControlPanel` already calls `sdk.set_vis_delay(ms)` → `loop.set_vis_delay(ms)`.
+
+**No new imports in GUI:** detection uses duck typing (`hasattr`) to stay within the rule that GUI must not import from `src.core`.
+
+---
+
+### 12.2 Feature B — Q-Table Arrows for Visited States Only
+
+**Motivation:** On a fresh (zero) Q-Table, all `argmax` values point in the same direction (action 0). Showing arrows everywhere is misleading. Arrows should only appear for states the agent has visited at least once.
+
+**Changes:**
+- `QLearningAgent`: add `_visited: set[int]`; update in `update()`; expose via `get_visited_states() -> frozenset[int]`; clear in `reset()`.
+- `DroneSimSDK`: add `get_visited_states()` delegation.
+- `GridCanvas.draw_policy_arrows()`: filter to visited states only.
+
+---
+
+### 12.3 Feature C — Bottom Status Bar with Hotkeys
+
+**Motivation:** Buttons in the side panel are hard to reach and have no keyboard equivalents. A persistent status bar at the bottom provides quick access and visible status.
+
+**Changes:**
+- New file `src/gui/status_bar.py` — `StatusBar(ttk.Frame)` with compact buttons and a status label.
+- Root window keyboard bindings: `<s>` start, `<p>` pause, `<x>` stop, `<r>` reset, `<g>` greedy.
+- `App._build_layout()` packs `StatusBar` at `side="bottom"` before columns.
+- `ControlPanel` button section made optional or collapsed.
+
+---
+
 *This plan is the implementation blueprint for the Drone Q-Learning Simulation. Refer to [docs/PRD.md](PRD.md) for requirements and [docs/TODO.md](TODO.md) for the per-task checklist.*

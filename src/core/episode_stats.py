@@ -1,8 +1,8 @@
-"""Dataclass for per-episode training statistics."""
+"""Dataclass for per-episode training statistics and per-step updates."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-__all__ = ["EpisodeStats"]
+__all__ = ["EpisodeStats", "StepUpdate"]
 
 
 @dataclass
@@ -22,3 +22,19 @@ class EpisodeStats:
     total_reward: float
     max_delta_q: float
     reached_target: bool
+
+
+@dataclass
+class StepUpdate:
+    """Emitted by TrainingLoop after each step when vis_delay > 0.
+
+    Allows the GUI to render the drone's position and trail in real time
+    without waiting for the end of an episode.
+
+    Attributes:
+        state: Current drone grid-state index after the step.
+        trail: Full path from episode start to current position (inclusive).
+    """
+
+    state: int
+    trail: list[int] = field(default_factory=list)

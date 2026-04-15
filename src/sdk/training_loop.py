@@ -2,7 +2,9 @@
 
 import queue
 import threading
+import time
 
+from src.core.episode_stats import StepUpdate
 from src.core.grid_world import GridWorld
 from src.core.q_agent import QLearningAgent
 
@@ -87,6 +89,7 @@ class TrainingLoop:
                 threading.Event().wait(0.05)
 
             state = self._env.reset()
+            trail: list[int] = [state]
             reached = False
             for _ in range(self._max_steps):
                 if self._stop_event.is_set():
@@ -95,6 +98,10 @@ class TrainingLoop:
                 next_state, reward, done = self._env.step(state, action)
                 self._agent.update(state, action, reward, next_state)
                 state = next_state
+                trail.append(state)
+                if self.vis_delay > 0:
+                    self._queue.put(StepUpdate(state=state, trail=trail.copy()))
+                    time.sleep(self.vis_delay)
                 if done:
                     reached = True
                     break

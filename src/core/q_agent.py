@@ -33,6 +33,7 @@ class QLearningAgent:
         self._init_epsilon: float = self._epsilon
         self._q: np.ndarray = np.zeros((num_states, num_actions))
         self._episode: int = 0
+        self._visited: set[int] = set()
         self._reset_accumulators()
 
 
@@ -44,6 +45,7 @@ class QLearningAgent:
 
     def update(self, state: int, action: int, reward: float, next_state: int) -> float:
         """Apply Bellman update Q(s,a) ← Q+α[r+γ·max Q(s')-Q] and return |Δq|."""
+        self._visited.add(state)
         old_q = self._q[state, action]
         td_target = reward + self._gamma * float(np.max(self._q[next_state]))
         new_q = old_q + self._alpha * (td_target - old_q)
@@ -110,11 +112,20 @@ class QLearningAgent:
         self._q = q.copy()
 
     def reset(self) -> None:
-        """Reset Q-Table, episode counter, epsilon, and accumulators."""
+        """Reset Q-Table, episode counter, epsilon, accumulators, and visited set."""
         self._q = np.zeros((self._ns, self._na))
         self._episode = 0
         self._epsilon = self._init_epsilon
+        self._visited.clear()
         self._reset_accumulators()
+
+    def get_visited_states(self) -> frozenset[int]:
+        """Return an immutable snapshot of all states visited since last reset.
+
+        A state is considered visited when it has been the source state of at
+        least one ``update()`` call (i.e. the agent took an action from it).
+        """
+        return frozenset(self._visited)
 
     def update_params(self, **kwargs: float) -> None:
         """Update hyperparameters at runtime.
