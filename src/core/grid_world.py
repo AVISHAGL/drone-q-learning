@@ -127,7 +127,7 @@ class GridWorld:
         mapping = {
             CellType.EMPTY: (float(self._rewards["empty"]), False),
             CellType.WIND: (float(self._rewards["wind"]), False),
-            CellType.TRAP: (float(self._rewards["trap"]), False),
+            CellType.TRAP: (float(self._rewards["trap"]), True),
             CellType.TARGET: (float(self._rewards["target"]), True),
             CellType.START: (float(self._rewards["empty"]), False),
         }

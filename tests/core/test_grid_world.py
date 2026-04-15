@@ -234,12 +234,12 @@ def test_grid_world_step_into_trap_reward_minus_ten(small_cfg: dict) -> None:
     assert r == -10.0
 
 
-def test_grid_world_step_into_trap_done_false(small_cfg: dict) -> None:
-    """Stepping into TRAP gives done=False."""
+def test_grid_world_step_into_trap_done_true(small_cfg: dict) -> None:
+    """Stepping into TRAP terminates the episode (done=True)."""
     gw = GridWorld(small_cfg)
     gw.set_cell(0, 1, CellType.TRAP)
     _, _, d = gw.step(gw.pos_to_state(0, 0), 3)
-    assert d is False
+    assert d is True
 
 
 def test_grid_world_step_into_wind_reward_minus_three(small_cfg: dict) -> None:

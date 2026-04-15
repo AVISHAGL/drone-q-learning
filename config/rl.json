@@ -8,5 +8,5 @@
     "episodes": 1000,
     "max_steps": 200,
     "vis_every_n": 10,
-    "vis_delay_ms": 50
+    "vis_delay_ms": 100
 }
